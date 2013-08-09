@@ -1,0 +1,2 @@
+API_KEY = "Enter your key here"
+API_ENDPOINT = "http://myserver.umn.edu/omeka/api/"
