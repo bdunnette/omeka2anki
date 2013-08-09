@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # Copyright 2103 Regents of the University of Minnesota
-# Available under the MIT License: http://opensource.org/licenses/MIT
+# Available under the terms of the MIT License: http://opensource.org/licenses/MIT
 
 import requests
 import json
