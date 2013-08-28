@@ -43,8 +43,4 @@ for omeka_collection in omeka_collections[1:]:
         anki_collection.save()
         anki_exporter = anki.exporting.AnkiPackageExporter(anki_collection)
         print "Exporting to %s.apkg" % collection_name
-<<<<<<< HEAD
-        anki_exporter.exportInto("C:\\Users\\dunn0172\\Google Drive\\%s.apkg" % collection_name)
-=======
         anki_exporter.exportInto(os.path.join(root_path, "%s.apkg" % collection_name))
->>>>>>> 0d3bff15efe571b00cf436ae60fe6288850b2a01
