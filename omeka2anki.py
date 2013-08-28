@@ -20,12 +20,11 @@ for omeka_collection in omeka_collections:
     if len(omeka_items) >= 1:
         anki_collection = anki.storage.Collection("%s.anki2" % collection_name)
         for item in omeka_items:
-            #print item
             item_files = requests.get(item['files']['url']).json()
-            #print item_files
             for file in item_files:
-                print file
-                if file['element_texts'] and 'image' in file['mime_type']:
+                #print file
+                # Only create a card if we have both an image and descriptive text
+                if 'image' in file['mime_type'] and file['element_texts']:
                     anki_note = anki_collection.newNote()
                     print "Downloading file %s" % file['filename']
                     file_image = urlretrieve(file['file_urls']['thumbnail'], file['filename'])
@@ -39,4 +38,4 @@ for omeka_collection in omeka_collections:
         anki_collection.save()
         anki_exporter = anki.exporting.AnkiPackageExporter(anki_collection)
         print "Exporting to %s.apkg" % collection_name
-        anki_exporter.exportInto("C:\\temp\\%s.apkg" % collection_name)
+        anki_exporter.exportInto("C:\\Users\\dunn0172\\Google Drive\\%s.apkg" % collection_name)
