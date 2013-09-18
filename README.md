@@ -9,12 +9,12 @@ To use omeka2anki:
 - Install [Python](http://python.org) (if it's not already on your system)
 - Download additional libraries that omeka2anki relies upon:
   
-    pip install -r requirements.txt
+	pip install -r requirements.txt
   
 - Copy omeka_api_config.py.dist to omeka_api_config.py
 - Edit omeka_api_config.py to reflect your Omeka setup (changing API_ENDPOINT to your Omeka API location - usually something like http://your-server-name-here/api)
 - Run omeka2anki:
   
-    python omeka2anki.py
+	python omeka2anki.py
   
 Anki packages (.apkg files) for each publicly-available Omeka collection should be created in the _omeka2anki-temp_ folder in your home directory.
