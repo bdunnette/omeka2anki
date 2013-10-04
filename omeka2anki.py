@@ -20,7 +20,7 @@ title_element = requests.get(api_endpoint + "elements?name=Title&element_set=1")
 title_element_id = title_element[0]['id']
 omeka_collections = requests.get(api_endpoint + "collections").json()
 for omeka_collection in omeka_collections[1:]:
-    collection_name = omeka_collection['element_texts'][0]['text'].lower().replace(' ','_')
+    collection_name = omeka_collection['element_texts'][0]['text'].lower().replace(' ','_').replace(':','')
     omeka_items = requests.get(omeka_collection['items']['url']).json()
     print "Found collection %s with %s items" % (collection_name, len(omeka_items))#pprint.pprint(omeka_collection)
     if len(omeka_items) >= 1:
@@ -49,7 +49,10 @@ for omeka_collection in omeka_collections[1:]:
                     anki_collection.media.addFile(image_filename)
                     
                     # Look to see if there is a "_marked" version of this image
-                    base_filename = item_file['original_filename'].rsplit("/",1)[1]
+		    if "/" in item_file['original_filename']:
+                    	base_filename = item_file['original_filename'].rsplit("/",1)[1]
+		    else:
+			base_filename = item_file['original_filename']
                     marked_filename = base_filename.replace(".jpg", "_marked.jpg")
                     
                     # If so, download the _marked file and add to the collection
