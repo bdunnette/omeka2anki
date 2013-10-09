@@ -8,6 +8,8 @@ import sys
 import pprint
 from urllib import urlretrieve
 import os.path
+import re
+import string  
 
 import omeka_api_config
 
@@ -15,17 +17,33 @@ import anki, anki.exporting
 
 api_endpoint = omeka_api_config.API_ENDPOINT
 
+#s = re.sub('[^0-9a-zA-Z]+', '*', s)
+
+# From http://www.andrew-seaford.co.uk/generate-safe-filenames-using-python/
+## Make a file name that only contains safe charaters  
+# @param inputFilename A filename containing illegal characters  
+# @return A filename containing only safe characters  
+def makeSafeFilename(inputFilename):     
+    try:  
+	safechars = string.letters + string.digits + " -_."  
+	return filter(lambda c: c in safechars, inputFilename).replace(" ","_")
+    except:  
+	return ""    
+    pass  
+
 root_path = os.path.join(os.path.expanduser('~'), 'omeka2anki-temp')
 title_element = requests.get(api_endpoint + "elements?name=Title&element_set=1").json()
 title_element_id = title_element[0]['id']
 omeka_collections = requests.get(api_endpoint + "collections").json()
 for omeka_collection in omeka_collections[1:]:
-    collection_name = omeka_collection['element_texts'][0]['text'].lower().replace(' ','_').replace(':','')
+    collection_name = omeka_collection['element_texts'][0]['text']
+    collection_filename = makeSafeFilename(collection_name).lower()
+    collection_tag = re.sub('[^0-9a-zA-Z]+', '*', collection_name.split(":")[0].lower().strip())
     omeka_items = requests.get(omeka_collection['items']['url']).json()
     print "Found collection %s with %s items" % (collection_name, len(omeka_items))#pprint.pprint(omeka_collection)
     if len(omeka_items) >= 1:
         # Create a new deck, which Anki calls a Collection
-        anki_collection = anki.storage.Collection(os.path.join(root_path, "%s.anki2" % collection_name))
+        anki_collection = anki.storage.Collection(os.path.join(root_path, "%s.anki2" % collection_filename))
         for item in omeka_items:
             # Get the text of the item's 'Title' element
             item_title = [element['text'] for element in item['element_texts'] if element['element']['id'] == title_element_id][0]
@@ -38,6 +56,7 @@ for omeka_collection in omeka_collections[1:]:
                     # Create a new card - a "note" in Anki terms
                     anki_note = anki_collection.newNote()
                     card_back = "<h3>%s</h3>" % item_title
+		    anki_note.tags = [collection_tag]
                     
                     # If image hasn't been downloaded, fetch it
                     image_filename = os.path.join(root_path, item_file['filename'])
@@ -75,5 +94,5 @@ for omeka_collection in omeka_collections[1:]:
         print "Saving collection %s" % collection_name 
         anki_collection.save()
         anki_exporter = anki.exporting.AnkiPackageExporter(anki_collection)
-        print "Exporting to %s.apkg" % collection_name
-        anki_exporter.exportInto(os.path.join(root_path, "%s.apkg" % collection_name))
+        print "Exporting to %s.apkg" % collection_filename
+        anki_exporter.exportInto(os.path.join(root_path, "%s.apkg" % collection_filename))
