@@ -38,7 +38,7 @@ omeka_collections = requests.get(api_endpoint + "collections").json()
 for omeka_collection in omeka_collections[1:]:
     collection_name = omeka_collection['element_texts'][0]['text']
     collection_filename = makeSafeFilename(collection_name).lower()
-    collection_tag = re.sub('[^0-9a-zA-Z]+', '*', collection_name.split(":")[0].lower().strip())
+    collection_tag = re.sub('[^0-9a-zA-Z]+', '', collection_name.split(":")[0].lower().strip())
     omeka_items = requests.get(omeka_collection['items']['url']).json()
     print "Found collection %s with %s items" % (collection_name, len(omeka_items))#pprint.pprint(omeka_collection)
     if len(omeka_items) >= 1:
