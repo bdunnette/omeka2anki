@@ -1,2 +1,1 @@
-API_KEY = "Enter your key here"
-API_ENDPOINT = "http://myserver.umn.edu/omeka/api/"
+API_ENDPOINT = "http://my-omeka-server.umn.edu/api/"
