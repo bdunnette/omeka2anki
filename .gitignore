@@ -34,8 +34,8 @@ nosetests.xml
 .project
 .pydevproject
 
-*_config.py
+settings.py
 *.media.db
 *.media/
-*.anki2
-*.anki2-journal
+*.anki2*
+*.apkg
