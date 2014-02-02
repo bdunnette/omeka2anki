@@ -30,7 +30,7 @@ def makeSafeFilename(inputFilename):
 def main():
     omeka_repositories = settings.REPOSITORIES
     for api_endpoint in omeka_repositories:
-        root_path = os.path.join(os.path.expanduser('~'), 'omeka2anki-temp')
+        settings.OUTPUT_DIR = os.path.join(os.path.expanduser('~'), 'omeka2anki-temp')
         title_element = requests.get(api_endpoint + "elements?name=Title&element_set=1").json()
         title_element_id = title_element[0]['id']
         omeka_collections = requests.get(api_endpoint + "collections").json()
@@ -39,10 +39,11 @@ def main():
             collection_filename = makeSafeFilename(collection_name).lower()
             collection_tag = re.sub('[^0-9a-zA-Z]+', '', collection_name.split(":")[0].lower().strip())
             omeka_items = requests.get(omeka_collection['items']['url']).json()
-            print "Found collection %s with %s items" % (collection_name, len(omeka_items))#pprint.pprint(omeka_collection)
+            print "Found collection %s with %s items" % (collection_name, len(omeka_items))
             if len(omeka_items) >= 1:
                 # Create a new deck, which Anki calls a Collection
-                anki_collection = anki.storage.Collection(os.path.join(root_path, "%s.anki2" % collection_filename))
+                print settings.OUTPUT_DIR
+                anki_collection = anki.storage.Collection(os.path.join(settings.OUTPUT_DIR, "%s.anki2" % collection_filename))
                 for item in omeka_items:
                     # Get the text of the item's 'Title' element
                     item_title = [element['text'] for element in item['element_texts'] if element['element']['id'] == title_element_id][0]
@@ -58,7 +59,7 @@ def main():
                             anki_note.tags = [collection_tag]
                             
                             # If image hasn't been downloaded, fetch it
-                            image_filename = os.path.join(root_path, item_file['filename'])
+                            image_filename = os.path.join(settings.OUTPUT_DIR, item_file['filename'])
                             if not os.path.isfile(image_filename):
                                 print "Downloading file %s" % item_file['filename']
                                 file_image = urlretrieve(item_file['file_urls']['original'], image_filename)
@@ -76,7 +77,7 @@ def main():
                             # If so, download the _marked file and add to the collection
                             if marked_filename in item_file_dict:
                                 marked_file = item_file_dict[marked_filename]
-                                marked_filename_local = os.path.join(root_path, marked_file['filename'])
+                                marked_filename_local = os.path.join(settings.OUTPUT_DIR, marked_file['filename'])
                                 if not os.path.isfile(marked_filename_local):
                                     print "Downloading marked file %s" % marked_file['filename']
                                     file_image = urlretrieve(marked_file['file_urls']['original'], marked_filename_local)
@@ -94,7 +95,7 @@ def main():
                 anki_collection.save()
                 anki_exporter = anki.exporting.AnkiPackageExporter(anki_collection)
                 print "Exporting to %s.apkg" % collection_filename
-                anki_exporter.exportInto(os.path.join(root_path, "%s.apkg" % collection_filename))
+                anki_exporter.exportInto(os.path.join(settings.OUTPUT_DIR, "%s.apkg" % collection_filename))
 
 if __name__ == "__main__":
     main()
