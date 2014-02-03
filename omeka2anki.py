@@ -14,6 +14,7 @@ import time
 from dateutil.parser import *
 from dateutil.tz import *
 from datetime import *
+import calendar
 
 import o2a_settings
 
@@ -33,21 +34,25 @@ def makeSafeFilename(inputFilename):
 
 def main():
     omeka_repositories = o2a_settings.REPOSITORIES
-    my_collections = {}
+    my_collections = []
     for api_endpoint in omeka_repositories:
         title_element = requests.get(api_endpoint + "elements?name=Title&element_set=1").json()
         title_element_id = title_element[0]['id']
         omeka_collections = requests.get(api_endpoint + "collections").json()
         for omeka_collection in omeka_collections[1:]:
-            my_collections[omeka_collection['url']] = omeka_collection
             collection_name = omeka_collection['element_texts'][0]['text']
+            omeka_collection['title'] = collection_name
             collection_filename = makeSafeFilename(collection_name).lower()
+            omeka_collection['anki_package'] = collection_filename
             collection_tag = re.sub('[^0-9a-zA-Z]+', '', collection_name.split(":")[0].lower().strip())
+            omeka_collection['tags'] = [collection_tag]
             omeka_items = requests.get(omeka_collection['items']['url']).json()
             print "Found collection %s with %s items" % (collection_name, len(omeka_items))
             if len(omeka_items) >= 1:
                 # Check to see if collection on server was modified since apkg was created
                 collection_modified = parse(omeka_collection['modified'])
+                omeka_collection['modified_date'] = collection_modified.strftime("%Y-%m-%d %H:%M")
+                my_collections.append(omeka_collection)
                 apkg_filename = os.path.join(o2a_settings.OUTPUT_DIR, "%s.apkg" % collection_filename)
                 if os.path.isfile(apkg_filename):
                     apkg_modified = datetime.fromtimestamp(os.path.getmtime(apkg_filename), tzlocal())
