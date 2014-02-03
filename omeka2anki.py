@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright 2014 Regents of the University of Minnesota
+# Copyright 2013-2014 Regents of the University of Minnesota
 # Available under the terms of the MIT License: http://opensource.org/licenses/MIT
 
 import requests
@@ -43,7 +43,7 @@ def main():
             collection_name = omeka_collection['element_texts'][0]['text']
             omeka_collection['title'] = collection_name
             collection_filename = makeSafeFilename(collection_name).lower()
-            omeka_collection['anki_package'] = collection_filename
+            omeka_collection['anki_package'] = "%s.apkg" % collection_filename
             collection_tag = re.sub('[^0-9a-zA-Z]+', '', collection_name.split(":")[0].lower().strip())
             omeka_collection['tags'] = [collection_tag]
             omeka_items = requests.get(omeka_collection['items']['url']).json()
