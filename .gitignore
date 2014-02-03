@@ -34,8 +34,10 @@ nosetests.xml
 .project
 .pydevproject
 
-settings.py
+*settings.py
+*config.py
 *.media.db
 *.media/
 *.anki2*
 *.apkg
+collections.json

@@ -1,2 +1,3 @@
 requests
 send2trash
+python-dateutil
