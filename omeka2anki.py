@@ -73,7 +73,8 @@ def main():
                             if ('image' in item_file['mime_type']) and ('_marked' not in item_file['original_filename']):
                                 # Create a new card - a "note" in Anki terms
                                 anki_note = anki_collection.newNote()
-                                card_back = "<h3>%s</h3>" % item_title
+				card_back = ""
+                                #card_back += "<h3>%s</h3>" % item_title
                                 anki_note.tags = [collection_tag]
                                 
                                 # Fetch image file
