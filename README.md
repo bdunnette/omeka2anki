@@ -6,7 +6,7 @@ Installation
 ------------
 To use omeka2anki:
 
-- Install [Python](https://www.python.org/downloads/) and [pip](http://pip.readthedocs.org/en/latest/installing.html#install-pip)(if they're not already on your system - Mac OS X and Linux should already have Python!)
+- Install [Python](https://www.python.org/downloads/) and [pip](http://pip.readthedocs.org/en/latest/installing.html#install-pip) (if they're not already on your system - Mac OS X and Linux should already have Python!)
 - Download additional libraries that omeka2anki relies upon: `pip install -r requirements.txt`
 - Copy o2a_settings.py.dist to o2a_settings.py
 - Edit o2a_settings.py to reflect your Omeka setup:
