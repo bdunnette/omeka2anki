@@ -15,3 +15,5 @@ To use omeka2anki:
 - Run omeka2anki: `python omeka2anki.py`
   
 Anki packages (.apkg files) for each publicly-available Omeka collection should now be created in the specified folder.
+
+Questions or issues? Please report them here: https://github.com/bdunnette/omeka2anki/issues
