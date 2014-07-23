@@ -10,7 +10,7 @@ To use omeka2anki:
 - Download additional libraries that omeka2anki relies upon: `pip install -r requirements.txt`
 - Copy o2a_settings.py.dist to o2a_settings.py
 - Edit o2a_settings.py to reflect your Omeka setup:
-  - Change `API_ENDPOINT` to your Omeka API location - e.g. `http://your-server-name-here/api`; if you have more than one repository, use something like `["http://omeka-repository1/api/", "http://omeka-repository2/api/"]`
+  - Change `API_ENDPOINT` to your Omeka API location - e.g. `["http://archive.pathology.umn.edu/api/"]`; if you have more than one repository, use something like `["http://omeka-repository1/api/", "http://omeka-repository2/api/"]`
   - Change `OUTPUT_DIR` to be the path where generated decks will be placed, e.g. `/home/myusername/omeka2anki`
 - Run omeka2anki: `python omeka2anki.py`
   
