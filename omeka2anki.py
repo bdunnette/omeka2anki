@@ -90,7 +90,8 @@ def main():
                                     base_filename = item_file['original_filename'].rsplit("/",1)[1]
                                 else:
                                     base_filename = item_file['original_filename']
-                                marked_filename = base_filename.replace(".jpg", "_marked.jpg")
+                                marked_filename = base_filename.replace(".jp", "_marked.jp")
+                                print "Base filename: %s; Marked: %s" % (base_filename, marked_filename)
                                 
                                 # If so, download the _marked file and add to the collection
                                 if marked_filename in item_file_dict:
