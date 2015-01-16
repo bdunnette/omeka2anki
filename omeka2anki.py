@@ -61,7 +61,8 @@ def main():
                     apkg_needs_update = True
                 if apkg_needs_update:
                     # Create a new deck, which Anki calls a Collection
-                    anki_collection = anki.storage.Collection(os.path.join(o2a_settings.OUTPUT_DIR, "%s.anki2" % collection_filename))
+		    collection_file = os.path.join(o2a_settings.OUTPUT_DIR, "%s.anki2" % collection_filename)
+                    anki_collection = anki.storage.Collection(collection_file)
                     for item in omeka_items:
                         # Get the text of the item's 'Title' element
                         item_title = [element['text'] for element in item['element_texts'] if element['element']['id'] == title_element_id][0]
@@ -74,7 +75,8 @@ def main():
                                 # Create a new card - a "note" in Anki terms
                                 anki_note = anki_collection.newNote()
 				card_back = ""
-                                #card_back += "<h3>%s</h3>" % item_title
+				card_title = ": ".join([collection_name, item_title])
+                                card_back += "<h3>%s</h3>" % card_title
                                 anki_note.tags = [collection_tag]
                                 
                                 # Fetch image file
