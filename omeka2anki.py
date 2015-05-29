@@ -37,8 +37,6 @@ def main():
     repositories = o2a_settings.REPOSITORIES
     my_collections = []
     for repo in repositories:
-	print repo
-	
 	now = str(calendar.timegm(datetime.utcnow().timetuple()))
 
 	auth_hash = hashlib.sha1(now + repo['secret']).hexdigest()
@@ -49,10 +47,11 @@ def main():
 		"Authorization-Timestamp": now,
 		"Authorization-Hash": auth_hash		
 	}
-	print headers
+
 	asset_id = "554a941b5d6fdfd3430bc782"
+
 	r = requests.post(repo['url'] + "asset/assetLookup/" + asset_id, headers=headers)	
-	print(r.url)
+
 	print(r.text)
 
 if __name__ == "__main__":
