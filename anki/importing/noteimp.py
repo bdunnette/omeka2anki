@@ -111,16 +111,21 @@ class NoteImporter(Importer):
         # loop through the notes
         updates = []
         updateLog = []
-        updateLogTxt = _("Update as first field matched: %s")
+        updateLogTxt = _("First field matched: %s")
         dupeLogTxt = _("Added duplicate with first field: %s")
         new = []
         self._ids = []
         self._cards = []
         self._emptyNotes = False
+        dupeCount = 0
+        dupes = []
         for n in notes:
-            if not self.allowHTML:
-                for c in range(len(n.fields)):
+            for c in range(len(n.fields)):
+                if not self.allowHTML:
                     n.fields[c] = cgi.escape(n.fields[c])
+                n.fields[c] = n.fields[c].strip()
+                if not self.allowHTML:
+                    n.fields[c] = n.fields[c].replace("\n", "<br>")
             fld0 = n.fields[fld0idx]
             csum = fieldChecksum(fld0)
             # first field must exist
@@ -151,11 +156,17 @@ class NoteImporter(Importer):
                             if data:
                                 updates.append(data)
                                 updateLog.append(updateLogTxt % fld0)
+                                dupeCount += 1
                                 found = True
-                            break
+                        elif self.importMode == 1:
+                            dupeCount += 1
                         elif self.importMode == 2:
                             # allow duplicates in this case
-                            updateLog.append(dupeLogTxt % fld0)
+                            if fld0 not in dupes:
+                                # only show message once, no matter how many
+                                # duplicates are in the collection already
+                                updateLog.append(dupeLogTxt % fld0)
+                                dupes.append(fld0)
                             found = False
             # newly add
             if not found:
@@ -183,9 +194,19 @@ class NoteImporter(Importer):
             self.col.sched.randomizeCards(did)
         else:
             self.col.sched.orderCards(did)
+
         part1 = ngettext("%d note added", "%d notes added", len(new)) % len(new)
-        part2 = ngettext("%d note updated", "%d notes updated", self.updateCount) % self.updateCount
-        self.log.append("%s, %s." % (part1, part2))
+        part2 = ngettext("%d note updated", "%d notes updated",
+                         self.updateCount) % self.updateCount
+        if self.importMode == 0:
+            unchanged = dupeCount - self.updateCount
+        elif self.importMode == 1:
+            unchanged = dupeCount
+        else:
+            unchanged = 0
+        part3 = ngettext("%d note unchanged", "%d notes unchanged",
+                         unchanged) % unchanged
+        self.log.append("%s, %s, %s." % (part1, part2, part3))
         self.log.extend(updateLog)
         if self._emptyNotes:
             self.log.append(_("""\
@@ -213,7 +234,6 @@ content in the text file to the correct fields."""))
             "insert or replace into notes values (?,?,?,?,?,?,?,?,?,?,?)",
             rows)
 
-    # need to document that deck is ignored in this case
     def updateData(self, n, id, sflds):
         self._ids.append(id)
         if not self.processFields(n, sflds):

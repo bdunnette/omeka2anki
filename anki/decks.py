@@ -53,6 +53,8 @@ defaultConf = {
         'separate': True,
         'order': NEW_CARDS_DUE,
         'perDay': 20,
+        # may not be set on old decks
+        'bury': True,
     },
     'lapse': {
         'delays': [10],
@@ -66,9 +68,11 @@ defaultConf = {
         'perDay': 100,
         'ease4': 1.3,
         'fuzz': 0.05,
-        'minSpace': 1,
+        'minSpace': 1, # not currently used
         'ivlFct': 1,
         'maxIvl': 36500,
+        # may not be set on old decks
+        'bury': True,
     },
     'maxTaken': 60,
     'timer': 0,
@@ -193,6 +197,12 @@ class DeckManager(object):
         deck['collapsed'] = not deck['collapsed']
         self.save(deck)
 
+    def collapseBrowser(self, did):
+        deck = self.get(did)
+        collapsed = deck.get('browserCollapsed', False)
+        deck['browserCollapsed'] = not collapsed
+        self.save(deck)
+
     def count(self):
         return len(self.decks)
 
@@ -223,6 +233,11 @@ class DeckManager(object):
             raise DeckRenameError(_("That deck already exists."))
         # ensure we have parents
         newName = self._ensureParents(newName)
+        # make sure we're not nesting under a filtered deck
+        if '::' in newName:
+            newParent = '::'.join(newName.split('::')[:-1])
+            if self.byName(newParent)['dyn']:
+                raise DeckRenameError(_("A filtered deck cannot have subdecks."))
         # rename children
         for grp in self.all():
             if grp['name'].startswith(g['name'] + "::"):
@@ -252,9 +267,12 @@ class DeckManager(object):
             self.rename(draggedDeck, ontoDeckName + "::" + self._basename(draggedDeckName))
 
     def _canDragAndDrop(self, draggedDeckName, ontoDeckName):
-        return draggedDeckName <> ontoDeckName \
-                and not self._isParent(ontoDeckName, draggedDeckName) \
-                and not self._isAncestor(draggedDeckName, ontoDeckName)
+        if draggedDeckName == ontoDeckName \
+                or self._isParent(ontoDeckName, draggedDeckName) \
+                or self._isAncestor(draggedDeckName, ontoDeckName):
+                    return False
+        else:
+            return True
 
     def _isParent(self, parentDeckName, childDeckName):
         return self._path(childDeckName) == self._path(parentDeckName) + [ self._basename(childDeckName) ]
@@ -326,7 +344,7 @@ class DeckManager(object):
     def remConf(self, id):
         "Remove a configuration and update all decks using it."
         assert int(id) != 1
-        self.col.modSchema()
+        self.col.modSchema(check=True)
         del self.dconf[str(id)]
         for g in self.all():
             # ignore cram decks

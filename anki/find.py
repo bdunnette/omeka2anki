@@ -3,10 +3,12 @@
 # License: GNU AGPL, version 3 or later; http://www.gnu.org/licenses/agpl.html
 
 import re
+import sre_constants
+
 from anki.utils import ids2str, splitFields, joinFields, intTime, fieldChecksum, stripHTMLMedia
 from anki.consts import *
 from anki.hooks import *
-import sre_constants
+
 
 # Find
 ##########################################################################
@@ -21,6 +23,7 @@ class Finder(object):
             deck=self._findDeck,
             mid=self._findMid,
             nid=self._findNids,
+            cid=self._findCids,
             note=self._findModel,
             prop=self._findProp,
             rated=self._findRated,
@@ -88,8 +91,8 @@ select distinct(n.id) from cards c, notes n where c.nid=n.id and """+preds
                         token += c
                 else:
                     inQuote = c
-            # separator
-            elif c == " ":
+            # separator (space and ideographic space)
+            elif c in (" ", u'\u3000'):
                 if inQuote:
                     token += c
                 elif token:
@@ -258,6 +261,8 @@ select distinct(n.id) from cards c, notes n where c.nid=n.id and """+preds
             return "type = %d" % n
         elif val == "suspended":
             return "c.queue = -1"
+        elif val == "buried":
+            return "c.queue = -2"
         elif val == "due":
             return """
 (c.queue in (2,3) and c.due <= %d) or
@@ -330,6 +335,11 @@ select distinct(n.id) from cards c, notes n where c.nid=n.id and """+preds
         if re.search("[^0-9,]", val):
             return
         return "n.id in (%s)" % val
+
+    def _findCids(self, (val, args)):
+        if re.search("[^0-9,]", val):
+            return
+        return "c.id in (%s)" % val
 
     def _findMid(self, (val, args)):
         if re.search("[^0-9]", val):
@@ -512,7 +522,7 @@ def fieldNames(col, downcase=True):
 
 # Find duplicates
 ##########################################################################
-
+# returns array of ("dupestr", [nids])
 def findDupes(col, fieldName, search=""):
     # limit search to notes with applicable field name
     if search:
@@ -538,6 +548,7 @@ def findDupes(col, fieldName, search=""):
         if ord is None:
             continue
         val = flds[ord]
+        val = stripHTMLMedia(val)
         # empty does not count as duplicate
         if not val:
             continue

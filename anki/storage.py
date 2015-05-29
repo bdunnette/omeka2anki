@@ -2,7 +2,10 @@
 # Copyright: Damien Elmes <anki@ichi2.net>
 # License: GNU AGPL, version 3 or later; http://www.gnu.org/licenses/agpl.html
 
-import os, copy, re
+import os
+import copy
+import re
+
 from anki.lang import _
 from anki.utils import intTime, json
 from anki.db import DB
@@ -11,7 +14,8 @@ from anki.consts import *
 from anki.stdmodels import addBasicModel, addClozeModel, addForwardReverse, \
     addForwardOptionalReverse
 
-def Collection(path, lock=True, server=False, sync=True):
+
+def Collection(path, lock=True, server=False, sync=True, log=False):
     "Open a new or existing collection. Path must be unicode."
     assert path.endswith(".anki2")
     path = os.path.abspath(path)
@@ -33,7 +37,7 @@ def Collection(path, lock=True, server=False, sync=True):
     else:
         db.execute("pragma synchronous = off")
     # add db to col and do any remaining upgrades
-    col = _Collection(db, server)
+    col = _Collection(db, server, log)
     if ver < SCHEMA_VERSION:
         _upgrade(col, ver)
     elif create:
@@ -84,7 +88,7 @@ def _upgrade(col, ver):
             d['collapsed'] = False
             col.decks.save(d)
     if ver < 4:
-        col.modSchema()
+        col.modSchema(check=False)
         clozes = []
         for m in col.models.all():
             if not "{{cloze:" in m['tmpls'][0]['qfmt']:
@@ -99,7 +103,7 @@ def _upgrade(col, ver):
         col.db.execute("update cards set odue = 0 where queue = 2")
         col.db.execute("update col set ver = 5")
     if ver < 6:
-        col.modSchema()
+        col.modSchema(check=False)
         import anki.models
         for m in col.models.all():
             m['css'] = anki.models.defaultModel['css']
@@ -113,13 +117,13 @@ def _upgrade(col, ver):
             col.models.save(m)
         col.db.execute("update col set ver = 6")
     if ver < 7:
-        col.modSchema()
+        col.modSchema(check=False)
         col.db.execute(
             "update cards set odue = 0 where (type = 1 or queue = 2) "
             "and not odid")
         col.db.execute("update col set ver = 7")
     if ver < 8:
-        col.modSchema()
+        col.modSchema(check=False)
         col.db.execute(
             "update cards set due = due / 1000 where due > 4294967296")
         col.db.execute("update col set ver = 8")
@@ -145,7 +149,7 @@ def _upgrade(col, ver):
 update cards set left = left + left*1000 where queue = 1""")
         col.db.execute("update col set ver = 10")
     if ver < 11:
-        col.modSchema()
+        col.modSchema(check=False)
         for d in col.decks.all():
             if d['dyn']:
                 order = d['order']

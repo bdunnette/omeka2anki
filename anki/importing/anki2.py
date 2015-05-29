@@ -3,6 +3,7 @@
 # License: GNU AGPL, version 3 or later; http://www.gnu.org/licenses/agpl.html
 
 import os
+import unicodedata
 from anki import Collection
 from anki.utils import intTime, splitFields, joinFields, incGuid
 from anki.importing.base import Importer
@@ -68,6 +69,7 @@ class Anki2Importer(Importer):
         dirty = []
         usn = self.dst.usn()
         dupes = 0
+        dupesIgnored = []
         for note in self.src.db.execute(
             "select * from notes"):
             # turn the db result into a mutable list
@@ -89,22 +91,30 @@ class Anki2Importer(Importer):
             else:
                 # a duplicate or changed schema - safe to update?
                 dupes += 1
-                if self.allowUpdate and note[GUID] in self._notes:
+                if self.allowUpdate:
                     oldNid, oldMod, oldMid = self._notes[note[GUID]]
-                    # safe if note types identical
-                    if oldMid == note[MID]:
-                        # will update if incoming note more recent
-                        if oldMod < note[MOD]:
+                    # will update if incoming note more recent
+                    if oldMod < note[MOD]:
+                        # safe if note types identical
+                        if oldMid == note[MID]:
                             # incoming note should use existing id
                             note[0] = oldNid
                             note[4] = usn
                             note[6] = self._mungeMedia(note[MID], note[6])
                             update.append(note)
                             dirty.append(note[0])
+                        else:
+                            dupesIgnored.append("%s: %s" % (
+                                self.col.models.get(oldMid)['name'],
+                                note[6].replace("\x1f", ",")
+                            ))
         if dupes:
             up = len(update)
             self.log.append(_("Updated %(a)d of %(b)d existing notes.") % dict(
                 a=len(update), b=dupes))
+            if dupesIgnored:
+                self.log.append(_("Some updates were ignored because note type has changed:"))
+                self.log.extend(dupesIgnored)
         # export info for calling code
         self.dupes = dupes
         self.added = len(add)
@@ -180,6 +190,11 @@ class Anki2Importer(Importer):
             dstScm = self.dst.models.scmhash(dstModel)
             if srcScm == dstScm:
                 # they do; we can reuse this mid
+                model = srcModel.copy()
+                model['id'] = mid
+                model['mod'] = intTime()
+                model['usn'] = self.col.usn()
+                self.dst.models.update(model)
                 break
             # as they don't match, try next id
             mid += 1
@@ -216,7 +231,9 @@ class Anki2Importer(Importer):
         newid = self.dst.decks.id(name)
         # pull conf over
         if 'conf' in g and g['conf'] != 1:
-            self.dst.decks.updateConf(self.src.decks.getConf(g['conf']))
+            conf = self.src.decks.getConf(g['conf'])
+            self.dst.decks.save(conf)
+            self.dst.decks.updateConf(conf)
             g2 = self.dst.decks.get(newid)
             g2['conf'] = g['conf']
             self.dst.decks.save(g2)
@@ -340,7 +357,8 @@ insert or ignore into revlog values (?,?,?,?,?,?,?,?,?)""", revlog)
         return self._mediaData(fname, self.dst.media.dir())
 
     def _writeDstMedia(self, fname, data):
-        path = os.path.join(self.dst.media.dir(), fname)
+        path = os.path.join(self.dst.media.dir(),
+                            unicodedata.normalize("NFC", fname))
         try:
             open(path, "wb").write(data)
         except (OSError, IOError):

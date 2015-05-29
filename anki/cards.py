@@ -1,20 +1,12 @@
 # -*- coding: utf-8 -*-
 # Copyright: Damien Elmes <anki@ichi2.net>
 # License: GNU AGPL, version 3 or later; http://www.gnu.org/licenses/agpl.html
+import pprint
 
 import time
+from anki.hooks import runHook
 from anki.utils import intTime, timestampID, joinFields
 from anki.consts import *
-
-# temporary
-_warned = False
-def warn():
-    global _warned
-    if _warned:
-        return
-    import sys
-    sys.stderr.write("Ignore the above, please download the fix assertion addon.")
-    _warned = True
 
 # Cards
 ##########################################################################
@@ -82,7 +74,7 @@ class Card(object):
         self.usn = self.col.usn()
         # bug check
         if self.queue == 2 and self.odue and not self.col.decks.isDyn(self.did):
-            warn()
+            runHook("odueInvalid")
         assert self.due < 4294967296
         self.col.db.execute(
             """
@@ -106,13 +98,14 @@ insert or replace into cards values
             self.odid,
             self.flags,
             self.data)
+        self.col.log(self)
 
     def flushSched(self):
         self.mod = intTime()
         self.usn = self.col.usn()
         # bug checks
         if self.queue == 2 and self.odue and not self.col.decks.isDyn(self.did):
-            warn()
+            runHook("odueInvalid")
         assert self.due < 4294967296
         self.col.db.execute(
             """update cards set
@@ -121,6 +114,7 @@ lapses=?, left=?, odue=?, odid=?, did=? where id = ?""",
             self.mod, self.usn, self.type, self.queue, self.due, self.ivl,
             self.factor, self.reps, self.lapses,
             self.left, self.odue, self.odid, self.did, self.id)
+        self.col.log(self)
 
     def q(self, reload=False, browser=False):
         return self.css() + self._getQA(reload, browser)['q']
@@ -180,3 +174,12 @@ lapses=?, left=?, odue=?, odid=?, did=? where id = ?""",
             self.model(), joinFields(self.note().fields))
         if self.ord not in ords:
             return True
+
+    def __repr__(self):
+        d = dict(self.__dict__)
+        # remove non-useful elements
+        del d['_note']
+        del d['_qa']
+        del d['col']
+        del d['timerStarted']
+        return pprint.pformat(d, width=300)

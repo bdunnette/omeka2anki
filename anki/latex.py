@@ -7,8 +7,14 @@ from anki.utils import checksum, call, namedtmp, tmpdir, isMac, stripHTML
 from anki.hooks import addHook
 from anki.lang import _
 
-latexCmd = ["latex", "-interaction=nonstopmode"]
-latexDviPngCmd = ["dvipng", "-D", "200", "-T", "tight"]
+# if you modify these in an add-on, you must make sure to take tmp.tex as the
+# input, and output tmp.png as the output file
+latexCmds = [
+    ["latex", "-interaction=nonstopmode", "tmp.tex"],
+    ["dvipng", "-D", "200", "-T", "tight", "tmp.dvi", "-o", "tmp.png"]
+#    ["dvipng", "-D", "600", "-T", "tight", "-bg", "Transparent", "tmp.dvi", "-o", "tmp.png"]
+]
+
 build = True # if off, use existing media but don't create new
 regexps = {
     "standard": re.compile(r"\[latex\](.+?)\[/latex\]", re.DOTALL | re.IGNORECASE),
@@ -46,7 +52,7 @@ def _imgLink(col, latex, model):
     "Return an img link for LATEX, creating if necesssary."
     txt = _latexFromHtml(col, latex)
     fname = "latex-%s.png" % checksum(txt.encode("utf8"))
-    link = '<img src="%s">' % fname
+    link = '<img class=latex src="%s">' % fname
     if os.path.exists(fname):
         return link
     elif not build:
@@ -89,14 +95,11 @@ package in the LaTeX header instead.""") % bad
     oldcwd = os.getcwd()
     png = namedtmp("tmp.png")
     try:
-        # generate dvi
+        # generate png
         os.chdir(tmpdir())
-        if call(latexCmd + ["tmp.tex"], stdout=log, stderr=log):
-            return _errMsg("latex", texpath)
-        # and png
-        if call(latexDviPngCmd + ["tmp.dvi", "-o", "tmp.png"],
-                stdout=log, stderr=log):
-            return _errMsg("dvipng", texpath)
+        for latexCmd in latexCmds:
+            if call(latexCmd, stdout=log, stderr=log):
+                return _errMsg(latexCmd[0], texpath)
         # add to media
         shutil.copyfile(png, os.path.join(mdir, fname))
         return
