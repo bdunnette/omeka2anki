@@ -1,2 +1,2 @@
 REPOSITORIES = ["http://archive.pathology.umn.edu/api/"]
-OUTPUT_DIR = "/home/bdunnette/Downloads/omeka2anki"
+OUTPUT_DIR = "/home/dunn0172/Downloads/omeka2anki"
