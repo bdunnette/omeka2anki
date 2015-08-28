@@ -82,7 +82,7 @@ def main():
                         # Get the text of the item's 'Title' element
                         item_title = [element['text']
                                       for element in item['element_texts'] if element['element']['id'] == title_element_id][0]
-                        print item_title
+                        print "Item: %s" % item_title
                         item_files = requests.get(item['files']['url']).json()
                         item_file_dict = {
                             f['original_filename']: f for f in item_files}
@@ -106,7 +106,8 @@ def main():
                                     item_file['file_urls']['original'])
 
                                 # Add image to the media in this card deck
-                                anki_collection.media.addFile(file_image[0])
+                                file_path = unicode(file_image[0], errors='ignore')
+                                anki_collection.media.addFile(file_path)
 
                                 # Look to see if there is a "_marked" version
                                 # of this image
@@ -128,10 +129,10 @@ def main():
                                     print "Downloading marked file %s" % marked_file['filename']
                                     marked_file_image = urlretrieve(
                                         marked_file['file_urls']['original'])
+                                    marked_file_path = unicode(marked_file_image[0], errors='ignore')
                                     anki_collection.media.addFile(
-                                        marked_file_image[0])
-                                    card_back += "<img src='%s'>" % marked_file_image[
-                                        0].rsplit("/", 1)[1]
+                                        marked_file_path)
+                                    card_back += "<img src='%s'>" % marked_file_path.rsplit("/", 1)[1]
                                 # If item has descriptive text, add it to the
                                 # back of the card
                                 if item_file['element_texts']:
