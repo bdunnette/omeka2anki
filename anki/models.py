@@ -8,6 +8,7 @@ from anki.utils import intTime, joinFields, splitFields, ids2str,\
 from anki.lang import _
 from anki.consts import *
 from anki.hooks import runHook
+import time
 
 # Models
 ##########################################################################
@@ -146,7 +147,7 @@ class ModelManager(object):
 
     def rem(self, m):
         "Delete model, and all its cards/notes."
-        self.col.modSchema()
+        self.col.modSchema(check=True)
         current = self.current()['id'] == m['id']
         # delete notes/cards
         self.col.remCards(self.col.db.list("""
@@ -165,8 +166,16 @@ select id from cards where nid in (select id from notes where mid = ?)""",
         self.setCurrent(m)
         self.save(m)
 
+    def ensureNameUnique(self, m):
+        for mcur in self.all():
+            if (mcur['name'] == m['name'] and
+                mcur['id'] != m['id']):
+                    m['name'] += "-" + checksum(str(time.time()))[:5]
+                    break
+
     def update(self, m):
         "Add or update an existing model. Used for syncing and merging."
+        self.ensureNameUnique(m)
         self.models[str(m['id'])] = m
         # mark registry changed, but don't bump mod time
         self.save()
@@ -232,7 +241,7 @@ and notes.mid = ? and cards.ord = ?""", m['id'], ord)
 
     def setSortIdx(self, m, idx):
         assert idx >= 0 and idx < len(m['flds'])
-        self.col.modSchema()
+        self.col.modSchema(check=True)
         m['sortf'] = idx
         self.col.updateFieldCache(self.nids(m))
         self.save(m)
@@ -240,7 +249,7 @@ and notes.mid = ? and cards.ord = ?""", m['id'], ord)
     def addField(self, m, field):
         # only mod schema if model isn't new
         if m['id']:
-            self.col.modSchema()
+            self.col.modSchema(check=True)
         m['flds'].append(field)
         self._updateFieldOrds(m)
         self.save(m)
@@ -250,7 +259,7 @@ and notes.mid = ? and cards.ord = ?""", m['id'], ord)
         self._transformFields(m, add)
 
     def remField(self, m, field):
-        self.col.modSchema()
+        self.col.modSchema(check=True)
         # save old sort field
         sortFldName = m['flds'][m['sortf']]['name']
         idx = m['flds'].index(field)
@@ -273,7 +282,7 @@ and notes.mid = ? and cards.ord = ?""", m['id'], ord)
         self.renameField(m, field, None)
 
     def moveField(self, m, field, idx):
-        self.col.modSchema()
+        self.col.modSchema(check=True)
         oldidx = m['flds'].index(field)
         if oldidx == idx:
             return
@@ -294,11 +303,11 @@ and notes.mid = ? and cards.ord = ?""", m['id'], ord)
         self._transformFields(m, move)
 
     def renameField(self, m, field, newName):
-        self.col.modSchema()
-        pat = r'{{([:#^/]|[^:#/^}][^:}]*?:|)%s}}'
+        self.col.modSchema(check=True)
+        pat = r'{{([^{}]*)([:#^/]|[^:#/^}][^:}]*?:|)%s}}'
         def wrap(txt):
             def repl(match):
-                return '{{' + match.group(1) + txt +  '}}'
+                return '{{' + match.group(1) + match.group(2) + txt +  '}}'
             return repl
         for t in m['tmpls']:
             for fmt in ('qfmt', 'afmt'):
@@ -338,7 +347,7 @@ and notes.mid = ? and cards.ord = ?""", m['id'], ord)
     def addTemplate(self, m, template):
         "Note: should col.genCards() afterwards."
         if m['id']:
-            self.col.modSchema()
+            self.col.modSchema(check=True)
         m['tmpls'].append(template)
         self._updateTemplOrds(m)
         self.save(m)
@@ -361,7 +370,7 @@ having count() < 2
 limit 1""" % ids2str(cids)):
             return False
         # ok to proceed; remove cards
-        self.col.modSchema()
+        self.col.modSchema(check=True)
         self.col.remCards(cids)
         # shift ordinals
         self.col.db.execute("""
@@ -405,7 +414,7 @@ select id from notes where mid = ?)""" % " ".join(map),
     # - newModel should be self if model is not changing
 
     def change(self, m, nids, newModel, fmap, cmap):
-        self.col.modSchema()
+        self.col.modSchema(check=True)
         assert newModel['id'] == m['id'] or (fmap and cmap)
         if fmap:
             self._changeNotes(nids, newModel, fmap)
@@ -469,8 +478,6 @@ select id from notes where mid = ?)""" % " ".join(map),
             s += f['name']
         for t in m['tmpls']:
             s += t['name']
-            s += t['qfmt']
-            s += t['afmt']
         return checksum(s)
 
     # Required field/text cache
@@ -562,7 +569,7 @@ select id from notes where mid = ?)""" % " ".join(map),
         sflds = splitFields(flds)
         map = self.fieldMap(m)
         ords = set()
-        matches = re.findall("{{cloze:(.+?)}}", m['tmpls'][0]['qfmt'])
+        matches = re.findall("{{[^}]*?cloze:(?:[^}]?:)*(.+?)}}", m['tmpls'][0]['qfmt'])
         matches += re.findall("<%cloze:(.+?)%>", m['tmpls'][0]['qfmt'])
         for fname in matches:
             if fname not in map:

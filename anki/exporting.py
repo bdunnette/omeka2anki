@@ -20,10 +20,12 @@ class Exporter(object):
         file.close()
 
     def escapeText(self, text):
-        "Escape newlines, tabs and CSS."
+        "Escape newlines, tabs, CSS and quotechar."
         text = text.replace("\n", "<br>")
         text = text.replace("\t", " " * 8)
         text = re.sub("(?i)<style>.*?</style>", "", text)
+        if "\"" in text:
+        	text = "\"" + text.replace("\"", "\"\"") + "\""
         return text
 
     def cardIds(self):
@@ -134,8 +136,14 @@ class AnkiExporter(Exporter):
             data)
         # notes
         strnids = ids2str(nids.keys())
-        notedata = self.src.db.all("select * from notes where id in "+
-                               strnids)
+        notedata = []
+        for row in self.src.db.all(
+            "select * from notes where id in "+strnids):
+            # remove system tags if not exporting scheduling info
+            if not self.includeSched:
+                row = list(row)
+                row[5] = self.removeSystemTags(row[5])
+            notedata.append(row)
         self.dst.db.executemany(
             "insert into notes values (?,?,?,?,?,?,?,?,?,?,?)",
             notedata)
@@ -152,7 +160,8 @@ class AnkiExporter(Exporter):
         else:
             # need to reset card state
             self.dst.sched.resetCards(cids)
-        # models
+        # models - start with zero
+        self.dst.models.models = {}
         for m in self.src.models.all():
             if int(m['id']) in mids:
                 self.dst.models.update(m)
@@ -205,6 +214,9 @@ class AnkiExporter(Exporter):
         # overwrite to apply customizations to the deck before it's closed,
         # such as update the deck description
         pass
+    
+    def removeSystemTags(self, tags):
+        return self.src.tags.remFromStr("marked leech", tags)
 
 # Packaged Anki decks
 ######################################################################
@@ -246,7 +258,10 @@ class AnkiPackageExporter(AnkiExporter):
                 media[c] = file
         # tidy up intermediate files
         os.unlink(colfile)
-        os.unlink(path.replace(".apkg", ".media.db"))
+        p = path.replace(".apkg", ".media.db2")
+        if os.path.exists(p):
+            os.unlink(p)
+        os.chdir(self.mediaDir)
         shutil.rmtree(path.replace(".apkg", ".media"))
         return media
 

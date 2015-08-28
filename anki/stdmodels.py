@@ -39,7 +39,7 @@ def addForwardReverse(col):
     mm.addTemplate(m, t)
     return m
 
-models.append((lambda: _("Forward & Reverse"), addForwardReverse))
+models.append((lambda: _("Basic (and reversed card)"), addForwardReverse))
 
 # Forward & Optional Reverse
 ##########################################################################
@@ -48,15 +48,17 @@ def addForwardOptionalReverse(col):
     mm = col.models
     m = addBasicModel(col)
     m['name'] = _("Basic (optional reversed card)")
-    fm = mm.newField(_("Add Reverse"))
+    av = _("Add Reverse")
+    fm = mm.newField(av)
     mm.addField(m, fm)
     t = mm.newTemplate(_("Card 2"))
-    t['qfmt'] = "{{#Add Reverse}}{{"+_("Back")+"}}{{/Add Reverse}}"
+    t['qfmt'] = "{{#%s}}{{%s}}{{/%s}}" % (av, _("Back"), av)
     t['afmt'] = "{{FrontSide}}\n\n<hr id=answer>\n\n"+"{{"+_("Front")+"}}"
     mm.addTemplate(m, t)
     return m
 
-models.append((lambda: _("Forward & Optional Reverse"), addForwardOptionalReverse))
+models.append((lambda: _("Basic (optional reversed card)"),
+        addForwardOptionalReverse))
 
 # Cloze
 ##########################################################################

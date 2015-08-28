@@ -2,7 +2,16 @@
 # Copyright: Damien Elmes <anki@ichi2.net>
 # License: GNU AGPL, version 3 or later; http://www.gnu.org/licenses/agpl.html
 
-import time, os, random, stat, datetime, copy
+import pprint
+import re
+import time
+import os
+import random
+import stat
+import datetime
+import copy
+import traceback
+
 from anki.lang import _, ngettext
 from anki.utils import ids2str, fieldChecksum, stripHTML, \
     intTime, splitFields, joinFields, maxID, json
@@ -15,9 +24,12 @@ from anki.tags import TagManager
 from anki.consts import *
 from anki.errors import AnkiError
 from anki.sound import stripSounds
-
 import anki.latex # sets up hook
-import anki.cards, anki.notes, anki.template, anki.find
+import anki.cards
+import anki.notes
+import anki.template
+import anki.find
+
 
 defaultConf = {
     # review options
@@ -39,9 +51,12 @@ defaultConf = {
 # this is initialized by storage.Collection
 class _Collection(object):
 
-    def __init__(self, db, server=False):
+    def __init__(self, db, server=False, log=False):
+        self._debugLog = log
         self.db = db
         self.path = db._path
+        self._openLog()
+        self.log(self.path, anki.version)
         self.server = server
         self._lastSave = time.time()
         self.clearUndo()
@@ -57,8 +72,9 @@ class _Collection(object):
             d += datetime.timedelta(hours=4)
             self.crt = int(time.mktime(d.timetuple()))
         self.sched = Scheduler(self)
-        # check for improper shutdown
-        self.cleanup()
+        if not self.conf.get("newBury", False):
+            self.conf['newBury'] = True
+            self.setMod()
 
     def name(self):
         n = os.path.splitext(os.path.basename(self.path))[0]
@@ -71,7 +87,7 @@ class _Collection(object):
         (self.crt,
          self.mod,
          self.scm,
-         self.dty,
+         self.dty, # no longer used
          self._usn,
          self.ls,
          self.conf,
@@ -131,7 +147,6 @@ crt=?, mod=?, scm=?, dty=?, usn=?, ls=?, conf=?""",
     def close(self, save=True):
         "Disconnect from DB."
         if self.db:
-            self.cleanup()
             if save:
                 self.save()
             else:
@@ -141,6 +156,7 @@ crt=?, mod=?, scm=?, dty=?, usn=?, ls=?, conf=?""",
             self.db.close()
             self.db = None
             self.media.close()
+            self._closeLog()
 
     def reopen(self):
         "Reconnect to DB (after changing threads, etc)."
@@ -148,13 +164,14 @@ crt=?, mod=?, scm=?, dty=?, usn=?, ls=?, conf=?""",
         if not self.db:
             self.db = anki.db.DB(self.path)
             self.media.connect()
+            self._openLog()
 
     def rollback(self):
         self.db.rollback()
         self.load()
         self.lock()
 
-    def modSchema(self, check=True):
+    def modSchema(self, check):
         "Mark schema modified. Call this first so user can abort if necessary."
         if not self.schemaChanged():
             if check and not runFilter("modSchema", True):
@@ -166,30 +183,25 @@ crt=?, mod=?, scm=?, dty=?, usn=?, ls=?, conf=?""",
         "True if schema changed since last sync."
         return self.scm > self.ls
 
-    def setDirty(self):
-        "Signal there are temp. suspended cards that need cleaning up on close."
-        self.dty = True
-
-    def cleanup(self):
-        "Unsuspend any temporarily suspended cards."
-        if self.dty:
-            self.sched.unburyCards()
-            self.dty = False
-
     def usn(self):
         return self._usn if self.server else -1
 
     def beforeUpload(self):
         "Called before a full upload."
-        tbls = "notes", "cards", "revlog", "graves"
+        tbls = "notes", "cards", "revlog"
         for t in tbls:
             self.db.execute("update %s set usn=0 where usn=-1" % t)
+        # we can save space by removing the log of deletions
+        self.db.execute("delete from graves")
         self._usn += 1
         self.models.beforeUpload()
         self.tags.beforeUpload()
         self.decks.beforeUpload()
-        self.modSchema()
+        self.modSchema(check=False)
         self.ls = self.scm
+        # ensure db is compacted before upload
+        self.db.execute("vacuum")
+        self.db.execute("analyze")
         self.close()
 
     # Object creation helpers
@@ -486,6 +498,7 @@ where c.nid = n.id and c.id in %s group by nid""" % ids2str(cids)):
         fields['Tags'] = data[5].strip()
         fields['Type'] = model['name']
         fields['Deck'] = self.decks.name(data[3])
+        fields['Subdeck'] = fields['Deck'].split('::')[-1]
         if model['type'] == MODEL_STD:
             template = model['tmpls'][data[4]]
         else:
@@ -498,13 +511,11 @@ where c.nid = n.id and c.id in %s group by nid""" % ids2str(cids)):
         afmt = afmt or template['afmt']
         for (type, format) in (("q", qfmt), ("a", afmt)):
             if type == "q":
-                format = format.replace("{{cloze:", "{{cq:%d:" % (
-                    data[4]+1))
+                format = re.sub("{{(?!type:)(.*?)cloze:", r"{{\1cq-%d:" % (data[4]+1), format)
                 format = format.replace("<%cloze:", "<%%cq:%d:" % (
                     data[4]+1))
             else:
-                format = format.replace("{{cloze:", "{{ca:%d:" % (
-                    data[4]+1))
+                format = re.sub("{{(.*?)cloze:", r"{{\1ca-%d:" % (data[4]+1), format)
                 format = format.replace("<%cloze:", "<%%ca:%d:" % (
                     data[4]+1))
                 fields['FrontSide'] = stripSounds(d['q'])
@@ -596,13 +607,19 @@ where c.nid == f.id
             if self._undo[0] == 1:
                 old = self._undo[2]
             self.clearUndo()
-        self._undo = [1, _("Review"), old + [copy.copy(card)]]
+        wasLeech = card.note().hasTag("leech") or False
+        self._undo = [1, _("Review"), old + [copy.copy(card)], wasLeech]
 
     def _undoReview(self):
         data = self._undo[2]
+        wasLeech = self._undo[3]
         c = data.pop()
         if not data:
             self.clearUndo()
+        # remove leech tag if it didn't have it before
+        if not wasLeech and c.note().hasTag("leech"):
+            c.note().delTag("leech")
+            c.note().flush()
         # write old data
         c.flush()
         # and delete revlog entry
@@ -610,6 +627,10 @@ where c.nid == f.id
             "select id from revlog where cid = ? "
             "order by id desc limit 1", c.id)
         self.db.execute("delete from revlog where id = ?", last)
+        # restore any siblings
+        self.db.execute(
+            "update cards set queue=type,mod=?,usn=? where queue=-2 and nid=?",
+            intTime(), self.usn(), c.nid)
         # and finally, update daily counts
         n = 1 if c.queue == 3 else c.queue
         type = ("new", "lrn", "rev")[n]
@@ -675,8 +696,17 @@ select id from notes where mid not in """ + ids2str(self.models.ids()))
             self.remNotes(ids)
         # for each model
         for m in self.models.all():
-            # cards with invalid ordinal
+            for t in m['tmpls']:
+                if t['did'] == "None":
+                    t['did'] = None
+                    problems.append(_("Fixed AnkiDroid deck override bug."))
+                    self.models.save(m)
             if m['type'] == MODEL_STD:
+                # model with missing req specification
+                if 'req' not in m:
+                    self.models._updateRequired(m)
+                    problems.append(_("Fixed note type: %s") % m['name'])
+                # cards with invalid ordinal
                 ids = self.db.list("""
 select id from cards where ord not in %s and nid in (
 select id from notes where mid = ?)""" %
@@ -718,6 +748,27 @@ select id from cards where nid not in (select id from notes)""")
                 ngettext("Deleted %d card with missing note.",
                          "Deleted %d cards with missing note.", cnt) % cnt)
             self.remCards(ids)
+        # cards with odue set when it shouldn't be
+        ids = self.db.list("""
+select id from cards where odue > 0 and (type=1 or queue=2) and not odid""")
+        if ids:
+            cnt = len(ids)
+            problems.append(
+                ngettext("Fixed %d card with invalid properties.",
+                         "Fixed %d cards with invalid properties.", cnt) % cnt)
+            self.db.execute("update cards set odue=0 where id in "+
+                ids2str(ids))
+        # cards with odid set when not in a dyn deck
+        dids = [id for id in self.decks.allIds() if not self.decks.isDyn(id)]
+        ids = self.db.list("""
+select id from cards where odid > 0 and did in %s""" % ids2str(dids))
+        if ids:
+            cnt = len(ids)
+            problems.append(
+                ngettext("Fixed %d card with invalid properties.",
+                         "Fixed %d cards with invalid properties.", cnt) % cnt)
+            self.db.execute("update cards set odid=0, odue=0 where id in "+
+                ids2str(ids))
         # tags
         self.tags.registerNotes()
         # field cache
@@ -754,3 +805,35 @@ and queue = 0""", intTime(), self.usn())
         self.db.execute("vacuum")
         self.db.execute("analyze")
         self.lock()
+
+    # Logging
+    ##########################################################################
+
+    def log(self, *args, **kwargs):
+        if not self._debugLog:
+            return
+        def customRepr(x):
+            if isinstance(x, basestring):
+                return x
+            return pprint.pformat(x)
+        path, num, fn, y = traceback.extract_stack(
+            limit=2+kwargs.get("stack", 0))[0]
+        buf = u"[%s] %s:%s(): %s" % (intTime(), os.path.basename(path), fn,
+                                     ", ".join([customRepr(x) for x in args]))
+        self._logHnd.write(buf.encode("utf8") + "\n")
+        if os.environ.get("ANKIDEV"):
+            print buf
+
+    def _openLog(self):
+        if not self._debugLog:
+            return
+        lpath = re.sub("\.anki2$", ".log", self.path)
+        if os.path.exists(lpath) and os.path.getsize(lpath) > 10*1024*1024:
+            lpath2 = lpath + ".old"
+            if os.path.exists(lpath2):
+                os.unlink(lpath2)
+            os.rename(lpath, lpath2)
+        self._logHnd = open(lpath, "ab")
+
+    def _closeLog(self):
+        self._logHnd = None

@@ -3,10 +3,14 @@
 # License: GNU AGPL, version 3 or later; http://www.gnu.org/licenses/agpl.html
 
 from __future__ import division
-import time, datetime, json
+import time
+import datetime
+import json
+
 import anki.js
 from anki.utils import fmtTimeSpan, ids2str
 from anki.lang import _, ngettext
+
 
 # Card stats
 ##########################################################################
@@ -56,6 +60,8 @@ class CardStats(object):
         self.addLine(_("Card Type"), c.template()['name'])
         self.addLine(_("Note Type"), c.model()['name'])
         self.addLine(_("Deck"), self.col.decks.name(c.did))
+        self.addLine(_("Note ID"), c.nid)
+        self.addLine(_("Card ID"), c.id)
         self.txt += "</table>"
         return self.txt
 
@@ -111,6 +117,7 @@ class CollectionStats(object):
         txt += self.todayStats()
         txt += self.dueGraph()
         txt += self.repsGraph()
+        txt += self.introductionGraph()
         txt += self.ivlGraph()
         txt += self.hourGraph()
         txt += self.easeGraph()
@@ -248,8 +255,48 @@ group by day order by day""" % (self._limit(), lim),
                             today=self.col.sched.today,
                             chunk=chunk)
 
-    # Reps and time spent
+    # Added, reps and time spent
     ######################################################################
+
+    def introductionGraph(self):
+        if self.type == 0:
+            days = 30; chunk = 1
+        elif self.type == 1:
+            days = 52; chunk = 7
+        else:
+            days = None; chunk = 30
+        return self._introductionGraph(self._added(days, chunk),
+                               days, _("Added"))
+
+    def _introductionGraph(self, data, days, title):
+        if not data:
+            return ""
+        d = data
+        conf = dict(
+            xaxis=dict(tickDecimals=0, max=0.5),
+            yaxes=[dict(min=0), dict(position="right",min=0)])
+        if days is not None:
+            conf['xaxis']['min'] = -days+0.5
+        def plot(id, data, ylabel, ylabel2):
+            return self._graph(
+                id, data=data, conf=conf, ylabel=ylabel, ylabel2=ylabel2)
+        # graph
+        (repdata, repsum) = self._splitRepData(d, ((1, colLearn, ""),))
+        txt = self._title(
+            title, _("The number of new cards you have added."))
+        txt += plot("intro", repdata, ylabel=_("Cards"), ylabel2=_("Cumulative Cards"))
+        # total and per day average
+        tot = sum([i[1] for i in d])
+        period = self._periodDays()
+        if not period:
+            # base off date of earliest added card
+            period = self._deckAge('add')
+        i = []
+        self._line(i, _("Total"), ngettext("%d card", "%d cards", tot) % tot)
+        self._line(i, _("Average"), self._avgDay(tot, period, _("cards")))
+        txt += self._lineTbl(i)
+
+        return txt
 
     def repsGraph(self):
         if self.type == 0:
@@ -316,15 +363,7 @@ group by day order by day""" % (self._limit(), lim),
         period = self._periodDays()
         if not period:
             # base off earliest repetition date
-            lim = self._revlogLimit()
-            if lim:
-                lim = " where " + lim
-            t = self.col.db.scalar("select id from revlog %s order by id limit 1" % lim)
-            if not t:
-                period = 1
-            else:
-                period = max(
-                    1, int(1+((self.col.sched.dayCutoff - (t/1000)) / 86400)))
+            period = self._deckAge('review')
         i = []
         self._line(i, _("Days studied"),
                    _("<b>%(pct)d%%</b> (%(x)s of %(y)s)") % dict(
@@ -341,14 +380,21 @@ group by day order by day""" % (self._limit(), lim),
             tot *= 60
         self._line(i, _("Average for days studied"), self._avgDay(
             tot, studied, unit))
-        self._line(i, _("If you studied every day"), self._avgDay(
-            tot, period, unit))
+        if studied != period:
+            # don't display if you did study every day
+            self._line(i, _("If you studied every day"), self._avgDay(
+                tot, period, unit))
         if total and tot:
             perMin = total / float(tot)
-            perMin = ngettext("%d card/minute", "%d cards/minute", perMin) % perMin
+            perMin = round(perMin, 1)
+            # don't round down to zero
+            if perMin < 0.1:
+                text = _("less than 0.1 cards/minute")
+            else:
+                text = _("%.01f cards/minute") % perMin
             self._line(
                 i, _("Average answer time"),
-                "%0.1fs (%s)" % ((tot*60)/total, perMin))
+                _("%(a)0.1fs (%(b)s)") % dict(a=(tot*60)/total, b=text))
         return self._lineTbl(i), int(tot)
 
     def _splitRepData(self, data, spec):
@@ -380,6 +426,27 @@ group by day order by day""" % (self._limit(), lim),
                     data=totd[n], color=col, label=None, yaxis=2,
                 bars={'show': False}, lines=dict(show=True), stack=-n))
         return (ret, alltot)
+
+    def _added(self, num=7, chunk=1):
+        lims = []
+        if num is not None:
+            lims.append("id > %d" % (
+                (self.col.sched.dayCutoff-(num*chunk*86400))*1000))
+        lims.append("did in %s" % self._limit())
+        if lims:
+            lim = "where " + " and ".join(lims)
+        else:
+            lim = ""
+        if self.type == 0:
+            tf = 60.0 # minutes
+        else:
+            tf = 3600.0 # hours
+        return self.col.db.all("""
+select
+(cast((id/1000.0 - :cut) / 86400.0 as int))/:chunk as day,
+count(id)
+from cards %s
+group by day order by day""" % lim, cut=self.col.sched.dayCutoff,tf=tf, chunk=chunk)
 
     def _done(self, num=7, chunk=1):
         lims = []
@@ -647,7 +714,7 @@ group by hour having count() > 30 order by hour""" % lim,
             (_("Mature"), colMature),
             (_("Young+Learn"), colYoung),
             (_("Unseen"), colUnseen),
-            (_("Suspended"), colSusp))):
+            (_("Suspended+Buried"), colSusp))):
             d.append(dict(data=div[c], label="%s: %s" % (t, div[c]), color=col))
         # text data
         i = []
@@ -697,7 +764,7 @@ select
 sum(case when queue=2 and ivl >= 21 then 1 else 0 end), -- mtr
 sum(case when queue in (1,3) or (queue=2 and ivl < 21) then 1 else 0 end), -- yng/lrn
 sum(case when queue=0 then 1 else 0 end), -- new
-sum(case when queue=-1 then 1 else 0 end) -- susp
+sum(case when queue<0 then 1 else 0 end) -- susp
 from cards where did in %s""" % self._limit())
 
     # Footer
@@ -825,6 +892,22 @@ $(function () {
 
     def _title(self, title, subtitle=""):
         return '<h1>%s</h1>%s' % (title, subtitle)
+
+    def _deckAge(self, by):
+        lim = self._revlogLimit()
+        if lim:
+            lim = " where " + lim
+        if by == 'review':
+            t = self.col.db.scalar("select id from revlog %s order by id limit 1" % lim)
+        elif by == 'add':
+            lim = "where did in %s" % ids2str(self.col.decks.active())
+            t = self.col.db.scalar("select id from cards %s order by id limit 1" % lim)
+        if not t:
+            period = 1
+        else:
+            period = max(
+                1, int(1+((self.col.sched.dayCutoff - (t/1000)) / 86400)))
+        return period
 
     def _periodDays(self):
         if self.type == 0:

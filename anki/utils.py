@@ -3,10 +3,24 @@
 # License: GNU AGPL, version 3 or later; http://www.gnu.org/licenses/agpl.html
 
 from __future__ import division
-import re, os, random, time, math, htmlentitydefs, subprocess, \
-    tempfile, shutil, string, httplib2, sys, locale
+import re
+import os
+import random
+import time
+import math
+import htmlentitydefs
+import subprocess
+import tempfile
+import shutil
+import string
+import sys
+import locale
 from hashlib import sha1
+import platform
+import traceback
+
 from anki.lang import _, ngettext
+
 
 if sys.version_info[1] < 5:
     def format_string(a, b):
@@ -15,6 +29,14 @@ if sys.version_info[1] < 5:
 
 try:
     import simplejson as json
+    # make sure simplejson's loads() always returns unicode
+    # we don't try to support .load()
+    origLoads = json.loads
+    def loads(s, *args, **kwargs):
+        if not isinstance(s, unicode):
+            s = unicode(s, "utf8")
+        return origLoads(s, *args, **kwargs)
+    json.loads = loads
 except ImportError:
     import json
 
@@ -122,17 +144,22 @@ def fmtFloat(float_value, point=1):
 
 # HTML
 ##############################################################################
+reStyle = re.compile("(?s)<style.*?>.*?</style>")
+reScript = re.compile("(?s)<script.*?>.*?</script>")
+reTag = re.compile("<.*?>")
+reEnts = re.compile("&#?\w+;")
+reMedia = re.compile("<img[^>]+src=[\"']?([^\"'>]+)[\"']?[^>]*>")
 
 def stripHTML(s):
-    s = re.sub("(?s)<style.*?>.*?</style>", "", s)
-    s = re.sub("(?s)<script.*?>.*?</script>", "", s)
-    s = re.sub("<.*?>", "", s)
+    s = reStyle.sub("", s)
+    s = reScript.sub("", s)
+    s = reTag.sub("", s)
     s = entsToTxt(s)
     return s
 
 def stripHTMLMedia(s):
     "Strip HTML but keep media filenames"
-    s = re.sub("<img[^>]+src=[\"']?([^\"'>]+)[\"']?[^>]*>", " \\1 ", s)
+    s = reMedia.sub(" \\1 ", s)
     return stripHTML(s)
 
 def minimizeHTML(s):
@@ -167,7 +194,7 @@ def entsToTxt(html):
             except KeyError:
                 pass
         return text # leave as is
-    return re.sub("&#?\w+;", fixup, html)
+    return reEnts.sub(fixup, html)
 
 # IDs
 ##############################################################################
@@ -265,9 +292,10 @@ def tmpdir():
             shutil.rmtree(_tmpdir)
         import atexit
         atexit.register(cleanup)
-        _tmpdir = unicode(os.path.join(tempfile.gettempdir(), "anki_temp"), sys.getfilesystemencoding())
-        if not os.path.exists(_tmpdir):
-            os.mkdir(_tmpdir)
+        _tmpdir = unicode(os.path.join(tempfile.gettempdir(), "anki_temp"), \
+                sys.getfilesystemencoding())
+    if not os.path.exists(_tmpdir):
+        os.mkdir(_tmpdir)
     return _tmpdir
 
 def tmpfile(prefix="", suffix=""):
@@ -334,3 +362,39 @@ def invalidFilename(str, dirsep=True):
         return "/"
     elif (dirsep or not isWin) and "\\" in str:
         return "\\"
+    elif str.strip().startswith("."):
+        return "."
+
+def platDesc():
+    # we may get an interrupted system call, so try this in a loop
+    n = 0
+    theos = "unknown"
+    while n < 100:
+        n += 1
+        try:
+            system = platform.system()
+            if isMac:
+                theos = "mac:%s" % (platform.mac_ver()[0])
+            elif isWin:
+                theos = "win:%s" % (platform.win32_ver()[0])
+            elif system == "Linux":
+                dist = platform.dist()
+                theos = "lin:%s:%s" % (dist[0], dist[1])
+            else:
+                theos = system
+            break
+        except:
+            continue
+    return theos
+
+# Debugging
+##############################################################################
+
+class TimedLog(object):
+    def __init__(self):
+        self._last = time.time()
+    def log(self, s):
+        path, num, fn, y = traceback.extract_stack(limit=2)[0]
+        sys.stderr.write("%5dms: %s(): %s\n" % ((time.time() - self._last)*1000, fn, s))
+        self._last = time.time()
+
