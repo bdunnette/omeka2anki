@@ -45,16 +45,19 @@ def main():
             title_element = requests.get(
                 api_endpoint + "elements?name=Title&element_set=1").json()
             title_element_id = title_element[0]['id']
-            omeka_collections = requests.get(api_endpoint + "collections").json()
+            omeka_collections = requests.get(
+                api_endpoint + "collections").json()
             for omeka_collection in omeka_collections[1:]:
                 collection_name = omeka_collection['element_texts'][0]['text']
                 omeka_collection['title'] = collection_name
                 collection_filename = makeSafeFilename(collection_name).lower()
-                omeka_collection['anki_package'] = "%s.apkg" % collection_filename
+                omeka_collection[
+                    'anki_package'] = "%s.apkg" % collection_filename
                 collection_tag = re.sub(
                     '[^0-9a-zA-Z]+', '', collection_name.split(":")[0].lower().strip())
                 omeka_collection['tags'] = [collection_tag]
-                omeka_items = requests.get(omeka_collection['items']['url']).json()
+                omeka_items = requests.get(
+                    omeka_collection['items']['url']).json()
                 print "Found collection %s with %s items" % (collection_name, len(omeka_items))
                 if len(omeka_items) >= 1:
                     # Check to see if collection on server was modified since apkg
@@ -81,20 +84,23 @@ def main():
                         # Remove existing version of file
                         if os.path.isfile(collection_file):
                             os.remove(collection_file)
-                        anki_collection = anki.storage.Collection(collection_file)
+                        anki_collection = anki.storage.Collection(
+                            collection_file)
                         for item in omeka_items:
                             # Get the text of the item's 'Title' element
                             item_title = [element['text']
                                           for element in item['element_texts'] if element['element']['id'] == title_element_id][0]
                             print "Item: %s" % item_title
-                            item_files = requests.get(item['files']['url']).json()
+                            item_files = requests.get(
+                                item['files']['url']).json()
                             item_file_dict = {
                                 f['original_filename']: f for f in item_files}
                             for item_file in item_files:
                                 # Check to see if item is an image, and is not the
                                 # annotated version of some other file
                                 if ('image' in item_file['mime_type']) and ('_marked' not in item_file['original_filename']):
-                                    # Create a new card - a "note" in Anki terms
+                                    # Create a new card - a "note" in Anki
+                                    # terms
                                     anki_note = anki_collection.newNote()
                                     card_back = ""
                                     card_title = ": ".join(
@@ -110,7 +116,8 @@ def main():
                                         item_file['file_urls']['original'])
 
                                     # Add image to the media in this card deck
-                                    file_path = unicode(file_image[0], errors='ignore')
+                                    file_path = unicode(
+                                        file_image[0], errors='ignore')
                                     anki_collection.media.addFile(file_path)
 
                                     # Look to see if there is a "_marked" version
@@ -133,10 +140,12 @@ def main():
                                         print "Downloading marked file %s" % marked_file['filename']
                                         marked_file_image = urlretrieve(
                                             marked_file['file_urls']['original'])
-                                        marked_file_path = unicode(marked_file_image[0], errors='ignore')
+                                        marked_file_path = unicode(
+                                            marked_file_image[0], errors='ignore')
                                         anki_collection.media.addFile(
                                             marked_file_path)
-                                        card_back += "<img src='%s'>" % marked_file_path.rsplit("/", 1)[1]
+                                        card_back += "<img src='%s'>" % marked_file_path.rsplit(
+                                            "/", 1)[1]
                                     # If item has descriptive text, add it to the
                                     # back of the card
                                     if item_file['element_texts']:
