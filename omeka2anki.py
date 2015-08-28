@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright 2013-2014 Regents of the University of Minnesota
+# Copyright 2013-2015 Regents of the University of Minnesota
 # Available under the terms of the MIT License:
 # http://opensource.org/licenses/MIT
 
