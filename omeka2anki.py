@@ -8,7 +8,7 @@ import json
 import sys
 import pprint
 from urllib import urlretrieve
-import os.path
+import os
 import re
 import string
 import time
@@ -38,121 +38,129 @@ def makeSafeFilename(inputFilename):
 
 
 def main():
-    omeka_repositories = o2a_settings.REPOSITORIES
-    my_collections = []
-    for api_endpoint in omeka_repositories:
-        title_element = requests.get(
-            api_endpoint + "elements?name=Title&element_set=1").json()
-        title_element_id = title_element[0]['id']
-        omeka_collections = requests.get(api_endpoint + "collections").json()
-        for omeka_collection in omeka_collections[1:]:
-            collection_name = omeka_collection['element_texts'][0]['text']
-            omeka_collection['title'] = collection_name
-            collection_filename = makeSafeFilename(collection_name).lower()
-            omeka_collection['anki_package'] = "%s.apkg" % collection_filename
-            collection_tag = re.sub(
-                '[^0-9a-zA-Z]+', '', collection_name.split(":")[0].lower().strip())
-            omeka_collection['tags'] = [collection_tag]
-            omeka_items = requests.get(omeka_collection['items']['url']).json()
-            print "Found collection %s with %s items" % (collection_name, len(omeka_items))
-            if len(omeka_items) >= 1:
-                # Check to see if collection on server was modified since apkg
-                # was created
-                collection_modified = parse(omeka_collection['modified'])
-                omeka_collection[
-                    'modified_date'] = collection_modified.strftime("%Y-%m-%d %H:%M")
-                my_collections.append(omeka_collection)
-                apkg_filename = os.path.join(
-                    o2a_settings.OUTPUT_DIR, "%s.apkg" % collection_filename)
-                if os.path.isfile(apkg_filename):
-                    apkg_modified = datetime.fromtimestamp(
-                        os.path.getmtime(apkg_filename), tzlocal())
-                    apkg_needs_update = apkg_modified < collection_modified
-                else:
-                    apkg_needs_update = True
-                if not apkg_needs_update:
-                    print "Local file (%s) is newer than server collection (%s), skipping..." % (apkg_modified,  collection_modified)
-                else:
-                    print "Collection %s was updated on %s; updating local file..." % (collection_name, collection_modified)
-                    # Create a new deck, which Anki calls a Collection
-                    collection_file = os.path.join(
-                        o2a_settings.OUTPUT_DIR, "%s.anki2" % collection_filename)
-                    anki_collection = anki.storage.Collection(collection_file)
-                    for item in omeka_items:
-                        # Get the text of the item's 'Title' element
-                        item_title = [element['text']
-                                      for element in item['element_texts'] if element['element']['id'] == title_element_id][0]
-                        print "Item: %s" % item_title
-                        item_files = requests.get(item['files']['url']).json()
-                        item_file_dict = {
-                            f['original_filename']: f for f in item_files}
-                        for item_file in item_files:
-                            # Check to see if item is an image, and is not the
-                            # annotated version of some other file
-                            if ('image' in item_file['mime_type']) and ('_marked' not in item_file['original_filename']):
-                                # Create a new card - a "note" in Anki terms
-                                anki_note = anki_collection.newNote()
-                                card_back = ""
-                                card_title = ": ".join(
-                                    [collection_name, item_title])
-                                card_back += "<h3>%s</h3>" % card_title
-                                anki_note.tags = [collection_tag]
+    try:
+        omeka_repositories = o2a_settings.REPOSITORIES
+        my_collections = []
+        for api_endpoint in omeka_repositories:
+            title_element = requests.get(
+                api_endpoint + "elements?name=Title&element_set=1").json()
+            title_element_id = title_element[0]['id']
+            omeka_collections = requests.get(api_endpoint + "collections").json()
+            for omeka_collection in omeka_collections[1:]:
+                collection_name = omeka_collection['element_texts'][0]['text']
+                omeka_collection['title'] = collection_name
+                collection_filename = makeSafeFilename(collection_name).lower()
+                omeka_collection['anki_package'] = "%s.apkg" % collection_filename
+                collection_tag = re.sub(
+                    '[^0-9a-zA-Z]+', '', collection_name.split(":")[0].lower().strip())
+                omeka_collection['tags'] = [collection_tag]
+                omeka_items = requests.get(omeka_collection['items']['url']).json()
+                print "Found collection %s with %s items" % (collection_name, len(omeka_items))
+                if len(omeka_items) >= 1:
+                    # Check to see if collection on server was modified since apkg
+                    # was created
+                    collection_modified = parse(omeka_collection['modified'])
+                    omeka_collection[
+                        'modified_date'] = collection_modified.strftime("%Y-%m-%d %H:%M")
+                    my_collections.append(omeka_collection)
+                    apkg_filename = os.path.join(
+                        o2a_settings.OUTPUT_DIR, "%s.apkg" % collection_filename)
+                    if os.path.isfile(apkg_filename):
+                        apkg_modified = datetime.fromtimestamp(
+                            os.path.getmtime(apkg_filename), tzlocal())
+                        apkg_needs_update = apkg_modified < collection_modified
+                    else:
+                        apkg_needs_update = True
+                    if not apkg_needs_update:
+                        print "Local file (%s) is newer than server collection (%s), skipping..." % (apkg_modified,  collection_modified)
+                    else:
+                        print "Collection %s was updated on %s; updating local file..." % (collection_name, collection_modified)
+                        # Create a new deck, which Anki calls a Collection
+                        collection_file = os.path.join(
+                            o2a_settings.OUTPUT_DIR, "%s.anki2" % collection_filename)
+                        # Remove existing version of file
+                        if os.path.isfile(collection_file):
+                            os.remove(collection_file)
+                        anki_collection = anki.storage.Collection(collection_file)
+                        for item in omeka_items:
+                            # Get the text of the item's 'Title' element
+                            item_title = [element['text']
+                                          for element in item['element_texts'] if element['element']['id'] == title_element_id][0]
+                            print "Item: %s" % item_title
+                            item_files = requests.get(item['files']['url']).json()
+                            item_file_dict = {
+                                f['original_filename']: f for f in item_files}
+                            for item_file in item_files:
+                                # Check to see if item is an image, and is not the
+                                # annotated version of some other file
+                                if ('image' in item_file['mime_type']) and ('_marked' not in item_file['original_filename']):
+                                    # Create a new card - a "note" in Anki terms
+                                    anki_note = anki_collection.newNote()
+                                    card_back = ""
+                                    card_title = ": ".join(
+                                        [collection_name, item_title])
+                                    card_back += "<h3>%s</h3>" % card_title
+                                    anki_note.tags = [collection_tag]
 
-                                # Fetch image file
-                                image_filename = os.path.join(
-                                    o2a_settings.OUTPUT_DIR, item_file['filename'])
-                                print "Downloading file %s" % item_file['filename']
-                                file_image = urlretrieve(
-                                    item_file['file_urls']['original'])
+                                    # Fetch image file
+                                    image_filename = os.path.join(
+                                        o2a_settings.OUTPUT_DIR, item_file['filename'])
+                                    print "Downloading file %s" % item_file['filename']
+                                    file_image = urlretrieve(
+                                        item_file['file_urls']['original'])
 
-                                # Add image to the media in this card deck
-                                file_path = unicode(file_image[0], errors='ignore')
-                                anki_collection.media.addFile(file_path)
+                                    # Add image to the media in this card deck
+                                    file_path = unicode(file_image[0], errors='ignore')
+                                    anki_collection.media.addFile(file_path)
 
-                                # Look to see if there is a "_marked" version
-                                # of this image
-                                if "/" in item_file['original_filename']:
-                                    base_filename = item_file[
-                                        'original_filename'].rsplit("/", 1)[1]
-                                else:
-                                    base_filename = item_file[
-                                        'original_filename']
-                                marked_filename = base_filename.replace(
-                                    ".jp", "_marked.jp")
-                                print "Base filename: %s; Marked: %s" % (base_filename, marked_filename)
+                                    # Look to see if there is a "_marked" version
+                                    # of this image
+                                    if "/" in item_file['original_filename']:
+                                        base_filename = item_file[
+                                            'original_filename'].rsplit("/", 1)[1]
+                                    else:
+                                        base_filename = item_file[
+                                            'original_filename']
+                                    marked_filename = base_filename.replace(
+                                        ".jp", "_marked.jp")
+                                    print "Base filename: %s; Marked: %s" % (base_filename, marked_filename)
 
-                                # If so, download the _marked file and add to
-                                # the collection
-                                if marked_filename in item_file_dict:
-                                    marked_file = item_file_dict[
-                                        marked_filename]
-                                    print "Downloading marked file %s" % marked_file['filename']
-                                    marked_file_image = urlretrieve(
-                                        marked_file['file_urls']['original'])
-                                    marked_file_path = unicode(marked_file_image[0], errors='ignore')
-                                    anki_collection.media.addFile(
-                                        marked_file_path)
-                                    card_back += "<img src='%s'>" % marked_file_path.rsplit("/", 1)[1]
-                                # If item has descriptive text, add it to the
-                                # back of the card
-                                if item_file['element_texts']:
-                                    card_back += "<p>%s</p>" % item_file[
-                                        'element_texts'][0]['text']
+                                    # If so, download the _marked file and add to
+                                    # the collection
+                                    if marked_filename in item_file_dict:
+                                        marked_file = item_file_dict[
+                                            marked_filename]
+                                        print "Downloading marked file %s" % marked_file['filename']
+                                        marked_file_image = urlretrieve(
+                                            marked_file['file_urls']['original'])
+                                        marked_file_path = unicode(marked_file_image[0], errors='ignore')
+                                        anki_collection.media.addFile(
+                                            marked_file_path)
+                                        card_back += "<img src='%s'>" % marked_file_path.rsplit("/", 1)[1]
+                                    # If item has descriptive text, add it to the
+                                    # back of the card
+                                    if item_file['element_texts']:
+                                        card_back += "<p>%s</p>" % item_file[
+                                            'element_texts'][0]['text']
 
-                                print "Card Back: " + card_back
-                                anki_note.fields = [
-                                    "<img src='%s'>" % file_image[0].rsplit("/", 1)[1], card_back]
-                                anki_collection.addNote(anki_note)
+                                    print "Card Back: " + card_back
+                                    anki_note.fields = [
+                                        "<img src='%s'>" % file_image[0].rsplit("/", 1)[1], card_back]
+                                    anki_collection.addNote(anki_note)
 
-                    print "Saving collection %s" % collection_name
-                    anki_collection.save()
-                    anki_exporter = anki.exporting.AnkiPackageExporter(
-                        anki_collection)
-                    print "Exporting to %s" % apkg_filename
-                    anki_exporter.exportInto(apkg_filename)
+                        print "Saving collection %s" % collection_name
+                        anki_collection.save()
+                        anki_exporter = anki.exporting.AnkiPackageExporter(
+                            anki_collection)
+                        print "Exporting to %s" % apkg_filename
+                        anki_exporter.exportInto(apkg_filename)
 
-    json.dump(my_collections,
-              open(os.path.join(o2a_settings.OUTPUT_DIR, "collections.json"), "w"))
+        json.dump(my_collections,
+                  open(os.path.join(o2a_settings.OUTPUT_DIR, "collections.json"), "w"))
+    except:
+        print "Unexpected error:", sys.exc_info()[0]
+        raise
+
 
 if __name__ == "__main__":
     main()
