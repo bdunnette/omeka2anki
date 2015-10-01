@@ -7,7 +7,7 @@ Installation
 To use omeka2anki:
 
 - Install [Python](https://www.python.org/downloads/) and [pip](http://pip.readthedocs.org/en/latest/installing.html#install-pip) (if they're not already on your system - Mac OS X and Linux should already have Python!)
-- Download additional libraries that omeka2anki relies upon: `pip install -r requirements.txt` (Ubuntu users can use `sudo apt-get install python-httplib2 python-requests python-dateutil` to install packaged versions of everything but send2trash)
+- Download additional libraries that omeka2anki relies upon: `pip install -r requirements.txt` (Ubuntu users can use `sudo apt-get install python-httplib2 python-requests python-dateutil python-pip language-pack-en` to install packaged versions of everything but send2trash)
 - Copy o2a_settings.py.dist to o2a_settings.py
 - Edit o2a_settings.py to reflect your Omeka setup:
   - Change `API_ENDPOINT` to your Omeka API location - e.g. `["http://archive.pathology.umn.edu/api/"]`; if you have more than one repository, use something like `["http://omeka-repository1/api/", "http://omeka-repository2/api/"]`
